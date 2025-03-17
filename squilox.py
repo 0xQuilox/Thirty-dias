@@ -1,3 +1,4 @@
+import argparse
 import logging
 import re
 import time
@@ -165,11 +166,22 @@ def crawl_and_test(driver, start_url):
             logging.error(f"Error crawling {url}: {e}")
 
 def main():
-    """Main function to initialize the bot and start testing."""
+    """Main function to initialize the bot and start testing with command-line URL."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="SQL Injection Bot for testing login pages.")
+    parser.add_argument('-u', '--url', required=True, help="Target URL (e.g., www.example.com)")
+    args = parser.parse_args()
+
+    # Ensure the URL has a scheme (http:// or https://)
+    target_url = args.url
+    if not target_url.startswith(('http://', 'https://')):
+        target_url = 'http://' + target_url  # Default to http if no scheme provided
+
+    # Initialize WebDriver
     driver = webdriver.Chrome()  # Replace with webdriver.Firefox() if preferred
     try:
-        start_url = 'http://example.com'  # Replace with your target URL
-        crawl_and_test(driver, start_url)
+        logging.info(f"Starting SQL injection test on {target_url}")
+        crawl_and_test(driver, target_url)
     except Exception as e:
         logging.error(f"Main execution error: {e}")
     finally:
