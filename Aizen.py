@@ -2,46 +2,47 @@ import requests
 import sys
 import time
 
+# Solscan API key provided by the user
+SOLSCAN_API_KEY = "eyJjcmVhdGVkQXQiOjE3NDI2MzUzNjAxMjIsImVtYWlsIjoibWlmdGFodWRlZW50YWp1ZGVlbkBnbWFpbC5jb20iLCJhY3Rpb24iOiJ0b2tlbi1hcGkiLCJhcGlWZXJzaW9uIjoidjIiLCJpYXQiOjE3NDI2MzUzNjB9.ct_n0ldPgcSC34_RDnKo2q2_kDSRwkj__xf-LZ_xeA0"
+
 def get_pair_data(chain_id, pair_address):
     """
     Fetch pair data from Dexscreener API.
     
     Args:
-        chain_id (str): The blockchain identifier (e.g., 'ethereum', 'bsc').
-        pair_address (str): The address of the trading pair.
+        chain_id (str): Blockchain identifier (e.g., 'ethereum', 'bsc', 'solana').
+        pair_address (str): Address of the trading pair.
     
     Returns:
-        dict: JSON response containing pair data, or None if the request fails.
+        dict: Pair data, or None if the request fails.
     """
     url = f"https://api.dexscreener.com/latest/dex/pairs/{chain_id}/{pair_address}"
     try:
         response = requests.get(url)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        return data.get("pair")
     except requests.RequestException as e:
-        print(f"Error fetching pair data: {e}")
+        print(f"Error fetching pair data from Dexscreener: {e}")
         return None
 
 def get_market_cap(chain_id, token_address):
     """
-    Fetch market cap from CoinGecko API.
+    Fetch market cap for Ethereum and BSC from CoinGecko API.
     
     Args:
-        chain_id (str): The blockchain identifier.
-        token_address (str): The token's contract address.
+        chain_id (str): Blockchain identifier.
+        token_address (str): Token contract address.
     
     Returns:
-        float or None: Market cap in USD, or None if not available.
+        float or None: Market cap in USD, or None if unavailable.
     """
-    # Mapping Dexscreener chain IDs to CoinGecko platform IDs
     platform_map = {
         "ethereum": "ethereum",
-        "bsc": "binance-smart-chain",
-        # Add more mappings for other chains as needed
+        "bsc": "binance-smart-chain"
     }
     platform = platform_map.get(chain_id)
     if not platform:
-        print(f"Unsupported chain ID for CoinGecko: {chain_id}")
         return None
     
     url = f"https://api.coingecko.com/api/v3/coins/{platform}/contract/{token_address}"
@@ -53,26 +54,48 @@ def get_market_cap(chain_id, token_address):
     except requests.RequestException:
         return None
 
-def is_contract_verified(chain_id, token_address):
+def get_solscan_token_info(token_address):
     """
-    Check if the token's contract is verified using the blockchain explorer API.
+    Fetch token market cap and reputation from Solscan API for Solana.
     
     Args:
-        chain_id (str): The blockchain identifier.
-        token_address (str): The token's contract address.
+        token_address (str): Solana token mint address.
     
     Returns:
-        bool: True if the contract is verified, False otherwise.
+        tuple: (market_cap, reputation) or (None, None) if the request fails.
     """
-    # Mapping chain IDs to explorer API endpoints
+    url = f"https://pro-api.solscan.io/v2.0/token/meta?address={token_address}"
+    headers = {"Authorization": f"Bearer {SOLSCAN_API_KEY}"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        market_cap = data.get("marketCapUSD")  # Adjust based on actual Solscan response
+        # Solscan doesn't directly provide "reputation"; using holder count as a proxy
+        reputation = "Known" if data.get("holderCount", 0) > 0 else "Unknown"
+        return market_cap, reputation
+    except requests.RequestException as e:
+        print(f"Error fetching token info from Solscan: {e}")
+        return None, None
+
+def is_contract_verified(chain_id, token_address):
+    """
+    Check if the token's contract is verified using blockchain explorer APIs.
+    
+    Args:
+        chain_id (str): Blockchain identifier.
+        token_address (str): Token contract address.
+    
+    Returns:
+        bool: True if verified, False otherwise.
+    """
     explorer_map = {
         "ethereum": "https://api.etherscan.io/api",
-        "bsc": "https://api.bscscan.com/api",
-        # Add more mappings for other chains as needed
+        "bsc": "https://api.bscscan.com/api"
     }
     explorer_api = explorer_map.get(chain_id)
     if not explorer_api:
-        print(f"Unsupported chain ID for explorer: {chain_id}")
         return False
     
     url = f"{explorer_api}?module=contract&action=getsourcecode&address={token_address}"
@@ -96,29 +119,31 @@ def calculate_pair_age(pair_created_at):
     Returns:
         float: Age of the pair in days.
     """
-    current_time = int(time.time() * 1000)  # Convert current time to milliseconds
+    current_time = int(time.time() * 1000)  # Current time in milliseconds
     age_ms = current_time - pair_created_at
     age_days = age_ms / (1000 * 60 * 60 * 24)  # Convert milliseconds to days
     return age_days
 
-def main():
-    """Main function to execute the scraping logic."""
-    # Check command-line arguments
-    if len(sys.argv) != 3:
-        print("Usage: python script.py <chainId> <pairAddress>")
-        print("Example: python script.py ethereum 0x1d42064Fc4Beb5F8aAF85F4617AE8b3b5B8Bd801")
-        sys.exit(1)
+def scrape_token_info(chain_id, pair_address):
+    """
+    Scrape token information based on the blockchain.
     
-    chain_id = sys.argv[1]
-    pair_address = sys.argv[2]
+    Args:
+        chain_id (str): Blockchain identifier ('ethereum', 'bsc', 'solana').
+        pair_address (str): Pair address on the DEX.
+    """
+    # Validate supported chains
+    supported_chains = ["ethereum", "bsc", "solana"]
+    if chain_id not in supported_chains:
+        print(f"Error: Unsupported chain '{chain_id}'. Supported chains: {', '.join(supported_chains)}")
+        return
     
     # Fetch pair data from Dexscreener
-    pair_data = get_pair_data(chain_id, pair_address)
-    if not pair_data or "pair" not in pair_data:
+    pair = get_pair_data(chain_id, pair_address)
+    if not pair:
         print("Failed to retrieve pair data or pair not found.")
         return
     
-    pair = pair_data["pair"]
     price = pair.get("priceUsd")
     pair_created_at = pair.get("pairCreatedAt")
     token_address = pair.get("baseToken", {}).get("address")
@@ -127,16 +152,35 @@ def main():
         print("Incomplete pair data received.")
         return
     
-    # Fetch additional data
-    market_cap = get_market_cap(chain_id, token_address)
-    contract_verified = is_contract_verified(chain_id, token_address)
+    # Calculate pair age
     pair_age_days = calculate_pair_age(pair_created_at)
     
+    # Chain-specific logic
+    if chain_id == "solana":
+        market_cap, reputation = get_solscan_token_info(token_address)
+        deployment_status = reputation if reputation else "Unknown"
+    else:  # Ethereum or BSC
+        market_cap = get_market_cap(chain_id, token_address)
+        deployment_status = is_contract_verified(chain_id, token_address)
+    
     # Output results
+    print(f"Chain: {chain_id}")
     print(f"Token Price: {price} USD")
-    print(f"Market Cap: {market_cap} USD" if market_cap else "Market Cap: Not available")
-    print(f"Contract Verified: {contract_verified}")
+    print(f"Market Cap: {market_cap if market_cap else 'Not Available'} USD")
+    print(f"Deployment Status: {'Verified' if deployment_status is True else deployment_status if isinstance(deployment_status, str) else 'Not Verified'}")
     print(f"Pair Age: {pair_age_days:.2f} days")
+
+def main():
+    """Main function to execute the scraping logic."""
+    if len(sys.argv) != 3:
+        print("Usage: python script.py <chainId> <pairAddress>")
+        print("Supported chains: ethereum, bsc, solana")
+        print("Example: python script.py solana 7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs")
+        sys.exit(1)
+    
+    chain_id = sys.argv[1].lower()
+    pair_address = sys.argv[2]
+    scrape_token_info(chain_id, pair_address)
 
 if __name__ == "__main__":
     main()
