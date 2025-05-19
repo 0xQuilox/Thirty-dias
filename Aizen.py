@@ -3,7 +3,7 @@ import sys
 import time
 
 # Solscan API key provided by the user
-SOLSCAN_API_KEY = "eyJjcmVhdGVkQXQiOjE3NDI2MzUzNjAxMjIsImVtYWlsIjoibWlmdGFodWRlZW50YWp1ZGVlbkBnbWFpbC5jb20iLCJhY3Rpb24iOiJ0b2tlbi1hcGkiLCJhcGlWZXJzaW9uIjoidjIiLCJpYXQiOjE3NDI2MzUzNjB9.ct_n0ldPgcSC34_RDnKo2q2_kDSRwkj__xf-LZ_xeA0"
+SOLSCAN_API_KEY = ""
 
 def get_pair_data(chain_id, pair_address):
     """
